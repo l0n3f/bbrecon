@@ -197,7 +197,7 @@ run_discovery() {
         
         # Step 3: JS file discovery with katana
         echo "[+] Phase 3: Crawling for JS files and endpoints..."
-        cat "${TARGET_DIR}/alive_subs.txt" | katana -depth 3 -rl 2 | grep -e ".js" | httpx -mc 200 > "${TARGET_DIR}/alive_jsfile.txt" || echo "[-] Katana/JS discovery failed"
+        cat "${TARGET_DIR}/alive_subs.txt" | katana -depth 3 -rl 2 | grep -E "\.(js|jsx)(\?|$)" | grep -v -E "\.(json|css|png|jpg|gif|svg|woff|ttf)(\?|$)" | httpx -mc 200 > "${TARGET_DIR}/alive_jsfile.txt" || echo "[-] Katana/JS discovery failed"
         
         if [[ -f "${TARGET_DIR}/alive_jsfile.txt" && -s "${TARGET_DIR}/alive_jsfile.txt" ]]; then
             local js_count=$(wc -l < "${TARGET_DIR}/alive_jsfile.txt")
@@ -208,14 +208,23 @@ run_discovery() {
             : > "${TARGET_DIR}/endpoints.txt"
             while IFS= read -r jsfile; do
                 echo "[+] Analyzing: $jsfile"
-                curl -s "$jsfile" \
-                | grep -ohE "\"/[a-zA-Z0-9_/?=&%.\-:]*\"" \
-                | sed -e 's/^"//' -e 's/"$//' \
+                
+                # Skip non-JS files that might have slipped through
+                if [[ "$jsfile" =~ \.(json|xml|css|html)(\?|$) ]]; then
+                    echo "[-] Skipping non-JS file: $jsfile"
+                    continue
+                fi
+                
+                # Improved endpoint extraction with better regex and error handling
+                curl -s --max-time 30 "$jsfile" 2>/dev/null \
+                | grep -oE '["'"'"'][/][a-zA-Z0-9_/?=&%.\-:]*["'"'"']' 2>/dev/null \
+                | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//' \
+                | grep -E '^/[a-zA-Z0-9_/?=&%.\-:]+$' \
                 | sort -u \
-                | awk -v file="$jsfile" '{print $0 " --> " file}' >> "${TARGET_DIR}/endpoints.txt"
+                | awk -v file="$jsfile" '{print $0 " --> " file}' >> "${TARGET_DIR}/hidden_endpoints.txt" 2>/dev/null || echo "[-] Failed to analyze: $jsfile"
             done < "${TARGET_DIR}/alive_jsfile.txt"
             
-            local endpoints_count=$(wc -l < "${TARGET_DIR}/endpoints.txt" 2>/dev/null || echo 0)
+            local endpoints_count=$(wc -l < "${TARGET_DIR}/hidden_endpoints.txt" 2>/dev/null || echo 0)
             echo "[+] Extracted $endpoints_count hidden endpoints"
         else
             echo "[-] No JS files found"
@@ -223,8 +232,25 @@ run_discovery() {
         fi
     else
         echo "[-] No alive subdomains found, creating empty files"
-        touch "${TARGET_DIR}/ports.txt" "${TARGET_DIR}/alive_jsfile.txt" "${TARGET_DIR}/endpoints.txt"
+        touch "${TARGET_DIR}/ports.txt" "${TARGET_DIR}/alive_jsfile.txt" "${TARGET_DIR}/endpoints.txt" "${TARGET_DIR}/hidden_endpoints.txt"
     fi
+    
+    # Consolidate all endpoints into final file
+    echo "[+] Consolidating endpoints..."
+    : > "${TARGET_DIR}/endpoints.txt"
+    if [[ -f "${TARGET_DIR}/hidden_endpoints.txt" ]]; then
+        cat "${TARGET_DIR}/hidden_endpoints.txt" >> "${TARGET_DIR}/endpoints.txt" 2>/dev/null
+    fi
+    
+    # Add additional endpoint discovery methods if needed
+    echo "[+] Running additional endpoint discovery..."
+    waybackurls "$TARGET" 2>/dev/null | head -1000 >> "${TARGET_DIR}/endpoints.txt" || echo "[-] Waybackurls failed or not installed"
+    gau "$TARGET" 2>/dev/null | head -1000 >> "${TARGET_DIR}/endpoints.txt" || echo "[-] GAU failed or not installed"
+    
+    # Clean and sort final endpoints
+    sort -u "${TARGET_DIR}/endpoints.txt" -o "${TARGET_DIR}/endpoints.txt" 2>/dev/null
+    local total_endpoints=$(wc -l < "${TARGET_DIR}/endpoints.txt" 2>/dev/null || echo 0)
+    echo "[+] Total unique endpoints discovered: $total_endpoints"
     
     log_info "Discovery phase completed"
     notify_module_done "discovery" "${TARGET_DIR}/alive_subs.txt"
