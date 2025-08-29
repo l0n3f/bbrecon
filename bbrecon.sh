@@ -17,6 +17,7 @@ TELEGRAM_ENABLED=true
 
 # Load utilities
 source "${SCRIPT_DIR}/utils/telegram.sh"
+source "${SCRIPT_DIR}/utils/report_generator.sh"
 
 #######################################
 # Logging functions
@@ -242,15 +243,6 @@ run_discovery() {
         cat "${TARGET_DIR}/hidden_endpoints.txt" >> "${TARGET_DIR}/endpoints.txt" 2>/dev/null
     fi
     
-    # Add additional endpoint discovery methods if needed
-    echo "[+] Running additional endpoint discovery..."
-    waybackurls "$TARGET" 2>/dev/null | head -1000 >> "${TARGET_DIR}/endpoints.txt" || echo "[-] Waybackurls failed or not installed"
-    gau "$TARGET" 2>/dev/null | head -1000 >> "${TARGET_DIR}/endpoints.txt" || echo "[-] GAU failed or not installed"
-    
-    # Clean and sort final endpoints
-    sort -u "${TARGET_DIR}/endpoints.txt" -o "${TARGET_DIR}/endpoints.txt" 2>/dev/null
-    local total_endpoints=$(wc -l < "${TARGET_DIR}/endpoints.txt" 2>/dev/null || echo 0)
-    echo "[+] Total unique endpoints discovered: $total_endpoints"
     
     log_info "Discovery phase completed"
     notify_module_done "discovery" "${TARGET_DIR}/alive_subs.txt"
@@ -321,6 +313,10 @@ EOF
     
     local total_findings=$((alive_subs_count + js_files_count + endpoints_count + vulns_count))
     echo "[+] Analysis complete: $total_findings total findings across all categories"
+    
+    # Generate beautiful HTML report
+    echo "[+] Generating comprehensive HTML report..."
+    generate_html_report "$TARGET" "$TARGET_DIR"
     
     log_info "Analysis phase completed" 
     notify_module_done "analysis" "$summary_file"
@@ -403,14 +399,22 @@ main() {
     # Final notification
     send_message "✅ Reconnaissance completed for \`${TARGET}\`"
     
-    # Send summary if it exists
+    # Send summary and HTML report if they exist
     local resumen_file="${TARGET_DIR}/resumen.txt"
+    local html_report="${TARGET_DIR}/bbrecon_report.html"
+    
     if [[ -f "$resumen_file" ]]; then
         send_document "$resumen_file"
     fi
     
+    if [[ -f "$html_report" ]]; then
+        send_document "$html_report"
+        echo "📊 Beautiful HTML report available at: $html_report"
+    fi
+    
     log_info "=== bbrecon completed for target: $TARGET ==="
     echo "Reconnaissance completed. Files generated in: $TARGET_DIR"
+    echo "📊 Open $html_report in your browser for a detailed visual report!"
 }
 
 # Execute main function with all arguments
