@@ -1,0 +1,57 @@
+# Environment and configuration files
+.env
+*.env
+
+# Log files
+logs/
+*.log
+
+# Target directories and results
+/home/l0n3/bugbounty/
+targets/
+results/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Backup files
+*.backup
+*.bak
+*.backup-*
+
+# Archive files
+*.tar.gz
+*.zip
+*.tar
+*.gz
+
+# Sensitive data
+tokens.txt
+credentials.txt
+secrets.txt
+api_keys.txt
+
+# Tool specific outputs
+nmap.gnmap
+*.json.tmp
+nuclei_output/
+katana_output/
+
+# Test files
+test_*
+*_test.*
