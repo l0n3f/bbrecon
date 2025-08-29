@@ -82,7 +82,7 @@ notify_module_done() {
         lines=$(wc -l < "$file_path" 2>/dev/null || echo 0)
         local filename
         filename=$(basename "$file_path")
-        send_message "✅ \`${module_name}\` completed for \`${TARGET}\` — ${lines} lines in ${filename}"
+        send_message "✅ \`${module_name}\` completed for \`${TARGET}\` - ${lines} lines in ${filename}"
     else
         send_message "⚠️ \`${module_name}\` completed for \`${TARGET}\` (no output)"
     fi
