@@ -490,20 +490,20 @@ analyze_sensitive_data() {
         done < "${target_dir}/alive_jsfile.txt"
     fi
     
-    # Search for other sensitive patterns (improved and more flexible)
+    # Search for other sensitive patterns (fixed regex compatibility)
     local sensitive_patterns=(
-        "password['\"]?\\s*[:=]\\s*['\"][^'\"]{3,}['\"]"
-        "secret['\"]?\\s*[:=]\\s*['\"][^'\"]{3,}['\"]"
-        "token['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
-        "apikey['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
-        "api[_-]?key['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
-        "apiKey['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
-        "private[_-]?key['\"]?\\s*[:=]\\s*['\"][^'\"]{20,}['\"]"
-        "access[_-]?token['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
-        "refresh[_-]?token['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
-        "auth[_-]?token['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
-        "authToken['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
-        "refreshToken['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
+        "password[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{3,}[\"']"
+        "secret[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{3,}[\"']"
+        "token[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
+        "apikey[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
+        "api[_-]?key[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
+        "apiKey[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
+        "private[_-]?key[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{20,}[\"']"
+        "access[_-]?token[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
+        "refresh[_-]?token[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
+        "auth[_-]?token[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
+        "authToken[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
+        "refreshToken[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"']{10,}[\"']"
     )
     
     if [[ -f "${target_dir}/alive_jsfile.txt" ]]; then
