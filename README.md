@@ -6,7 +6,7 @@ An automated reconnaissance framework designed for bug bounty hunting that combi
 
 - **Comprehensive Subdomain Discovery**: Recursive enumeration with alive filtering
 - **JavaScript File Analysis**: Deep crawling and endpoint extraction from JS files
-- **Port Scanning**: Efficient scanning on live hosts only
+
 - **Vulnerability Scanning**: Automated nuclei scans for tokens and vulnerabilities
 - **Real-time Notifications**: Telegram integration for progress updates
 - **Detailed Reporting**: Comprehensive summary with statistics and next steps
@@ -42,7 +42,7 @@ go install github.com/lc/gau@latest
 go install github.com/tomnomnom/waybackurls@latest
 
 # System tools
-sudo apt install nmap curl jq
+sudo apt install curl jq
 ```
 
 ### Setup
@@ -125,9 +125,8 @@ TELEGRAM_ENABLED=true
 ### Phase 1: Discovery
 1. **Subdomain Discovery**: Recursive enumeration using subfinder
 2. **Alive Filtering**: HTTP probing to identify responsive subdomains
-3. **Port Scanning**: Nmap scan on alive hosts (top 1000 ports)
-4. **JavaScript Discovery**: Web crawling with katana to find JS files
-5. **Endpoint Extraction**: Regex analysis of JS files for hidden endpoints
+3. **JavaScript Discovery**: Web crawling with katana to find JS files
+4. **Endpoint Extraction**: Regex analysis of JS files for hidden endpoints
 
 ### Phase 2: Analysis
 1. **Vulnerability Scanning**: Nuclei scans for tokens and vulnerabilities
@@ -223,7 +222,7 @@ The script handles existing target directories with three options:
 1. **Tools not found**:
 ```bash
 # Verify tools are in PATH
-which subfinder httpx katana nuclei nmap
+which subfinder httpx katana nuclei
 ```
 
 2. **Telegram not working**:

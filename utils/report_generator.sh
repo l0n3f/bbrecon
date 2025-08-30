@@ -20,14 +20,14 @@ generate_html_report() {
     
     # Calculate statistics
     local alive_subs_count=$(wc -l < "${target_dir}/alive_subs.txt" 2>/dev/null || echo 0)
-    local ports_count=$(wc -l < "${target_dir}/ports.txt" 2>/dev/null || echo 0)
     local js_files_count=$(wc -l < "${target_dir}/alive_jsfile.txt" 2>/dev/null || echo 0)
-    local endpoints_count=$(wc -l < "${target_dir}/endpoints.txt" 2>/dev/null || echo 0)
     local vulns_count=$(wc -l < "${target_dir}/vulns.txt" 2>/dev/null || echo 0)
     local hidden_endpoints_count=$(wc -l < "${target_dir}/hidden_endpoints.txt" 2>/dev/null || echo 0)
     
     # Analyze for sensitive findings
-    analyze_sensitive_data "$target_dir"
+    analyze_sensitive_data "$target_dir" || {
+        echo "[WARN] Failed to analyze sensitive data, continuing..."
+    }
     
     # Generate HTML
     cat << 'EOF' > "$report_file"
@@ -321,11 +321,7 @@ generate_html_report() {
                 <div class="stat-number" style="color: #28a745;">ALIVE_SUBS_COUNT</div>
                 <div class="stat-label">Live Subdomains</div>
             </div>
-            <div class="stat-card">
-                <span class="stat-icon">🔍</span>
-                <div class="stat-number" style="color: #17a2b8;">PORTS_COUNT</div>
-                <div class="stat-label">Open Ports</div>
-            </div>
+
             <div class="stat-card">
                 <span class="stat-icon">📜</span>
                 <div class="stat-number" style="color: #6f42c1;">JS_FILES_COUNT</div>
@@ -412,17 +408,7 @@ generate_html_report() {
                 </div>
             </div>
             
-            <!-- Open Ports -->
-            <div class="finding-card">
-                <div class="finding-header expandable" onclick="toggleSection('ports')">
-                    <span>🔍</span>
-                    <span>Open Ports</span>
-                    <span class="badge severity-low">PORTS_COUNT found</span>
-                </div>
-                <div id="ports" class="finding-content">
-                    PORTS_CONTENT
-                </div>
-            </div>
+
         </div>
         
         <!-- Footer -->
@@ -444,7 +430,7 @@ generate_html_report() {
         
         // Initially hide all sections
         document.addEventListener('DOMContentLoaded', function() {
-            const sections = ['api-keys', 'vulnerabilities', 'hidden-endpoints', 'subdomains', 'js-files', 'ports'];
+            const sections = ['api-keys', 'vulnerabilities', 'hidden-endpoints', 'subdomains', 'js-files'];
             sections.forEach(id => {
                 const section = document.getElementById(id);
                 if (section) {
@@ -459,8 +445,11 @@ EOF
 
     # Replace placeholders with actual data
     replace_placeholders "$report_file" "$target" "$target_dir" \
-        "$alive_subs_count" "$ports_count" "$js_files_count" \
-        "$endpoints_count" "$vulns_count" "$hidden_endpoints_count"
+        "$alive_subs_count" "$js_files_count" \
+        "$vulns_count" "$hidden_endpoints_count" || {
+        echo "[ERROR] Failed to replace placeholders in HTML report"
+        return 1
+    }
     
     echo "[+] HTML report generated: $report_file"
     return 0
@@ -476,47 +465,54 @@ analyze_sensitive_data() {
     echo "[+] Analyzing for sensitive data..."
     : > "$sensitive_file"
     
-    # API Keys patterns
+    # API Keys patterns (Updated with correct lengths and more flexible matching)
     local api_patterns=(
-        "AIza[0-9A-Za-z\\-_]{35}"  # Google API
-        "AKIA[0-9A-Z]{16}"         # AWS Access Key
-        "sk_live_[0-9a-zA-Z]{24}"  # Stripe Live Key
-        "sk_test_[0-9a-zA-Z]{24}"  # Stripe Test Key
-        "rk_live_[0-9a-zA-Z]{24}"  # Stripe Restricted Key
-        "ghp_[0-9a-zA-Z]{36}"      # GitHub Personal Access Token
-        "xox[baprs]-[0-9a-zA-Z-]+" # Slack Token
-        "[0-9]+-[0-9A-Za-z_]{32}"  # Facebook Access Token
-        "ya29\\.[0-9A-Za-z\\-_]+"  # Google OAuth Access Token
+        "AIza[0-9A-Za-z\\-_]{35,}"   # Google API (35+ chars, actual is 39)
+        "AKIA[0-9A-Z]{16}"           # AWS Access Key
+        "sk_live_[0-9a-zA-Z]{24,}"   # Stripe Live Key (24+ chars)
+        "sk_test_[0-9a-zA-Z]{24,}"   # Stripe Test Key (24+ chars) 
+        "rk_live_[0-9a-zA-Z]{24,}"   # Stripe Restricted Key (24+ chars)
+        "ghp_[0-9a-zA-Z]{36,}"       # GitHub Personal Access Token (36+ chars)
+        "xox[baprs]-[0-9a-zA-Z-]+"   # Slack Token
+        "[0-9]+-[0-9A-Za-z_]{32,}"   # Facebook Access Token (32+ chars)
+        "ya29\\.[0-9A-Za-z\\-_]+"    # Google OAuth Access Token
     )
     
     # Search in JS files
     if [[ -f "${target_dir}/alive_jsfile.txt" ]]; then
         while IFS= read -r jsfile; do
-            local content=$(curl -s --max-time 10 "$jsfile" 2>/dev/null)
+            local content=$(curl -s --max-time 10 "$jsfile" 2>/dev/null || echo "")
             for pattern in "${api_patterns[@]}"; do
-                echo "$content" | grep -oE "$pattern" | while read match; do
+                echo "$content" | grep -oE "$pattern" 2>/dev/null | while read match; do
                     echo "API_KEY|$jsfile|$match" >> "$sensitive_file"
-                done
+                done || true
             done
         done < "${target_dir}/alive_jsfile.txt"
     fi
     
-    # Search for other sensitive patterns
+    # Search for other sensitive patterns (improved and more flexible)
     local sensitive_patterns=(
         "password['\"]?\\s*[:=]\\s*['\"][^'\"]{3,}['\"]"
         "secret['\"]?\\s*[:=]\\s*['\"][^'\"]{3,}['\"]"
         "token['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
+        "apikey['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
         "api[_-]?key['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
+        "apiKey['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
         "private[_-]?key['\"]?\\s*[:=]\\s*['\"][^'\"]{20,}['\"]"
+        "access[_-]?token['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
+        "refresh[_-]?token['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
+        "auth[_-]?token['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
+        "authToken['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
+        "refreshToken['\"]?\\s*[:=]\\s*['\"][^'\"]{10,}['\"]"
     )
     
     if [[ -f "${target_dir}/alive_jsfile.txt" ]]; then
         while IFS= read -r jsfile; do
-            local content=$(curl -s --max-time 10 "$jsfile" 2>/dev/null)
+            local content=$(curl -s --max-time 10 "$jsfile" 2>/dev/null || echo "")
             for pattern in "${sensitive_patterns[@]}"; do
-                echo "$content" | grep -oiE "$pattern" | while read match; do
+                echo "$content" | grep -oiE "$pattern" 2>/dev/null | while read match; do
                     echo "SENSITIVE|$jsfile|$match" >> "$sensitive_file"
-                done
+                done || true
             done
         done < "${target_dir}/alive_jsfile.txt"
     fi
@@ -530,11 +526,9 @@ replace_placeholders() {
     local target="$2"
     local target_dir="$3"
     local alive_subs_count="$4"
-    local ports_count="$5"
-    local js_files_count="$6"
-    local endpoints_count="$7"
-    local vulns_count="$8"
-    local hidden_endpoints_count="$9"
+    local js_files_count="$5"
+    local vulns_count="$6"
+    local hidden_endpoints_count="$7"
     
     # Calculate API keys count
     local api_keys_count=0
@@ -543,35 +537,47 @@ replace_placeholders() {
     fi
     
     # Replace basic placeholders
-    sed -i "s/TARGET_PLACEHOLDER/$target/g" "$report_file"
-    sed -i "s/DATE_PLACEHOLDER/$(date)/g" "$report_file"
-    sed -i "s/DURATION_PLACEHOLDER/$(calculate_duration)/g" "$report_file"
-    sed -i "s/ALIVE_SUBS_COUNT/$alive_subs_count/g" "$report_file"
-    sed -i "s/PORTS_COUNT/$ports_count/g" "$report_file"
-    sed -i "s/JS_FILES_COUNT/$js_files_count/g" "$report_file"
-    sed -i "s/ENDPOINTS_COUNT/$endpoints_count/g" "$report_file"
-    sed -i "s/VULNS_COUNT/$vulns_count/g" "$report_file"
-    sed -i "s/HIDDEN_ENDPOINTS_COUNT/$hidden_endpoints_count/g" "$report_file"
-    sed -i "s/API_KEYS_COUNT/$api_keys_count/g" "$report_file"
+    sed -i "s/TARGET_PLACEHOLDER/$target/g" "$report_file" 2>/dev/null || true
+    sed -i "s/DATE_PLACEHOLDER/$(date)/g" "$report_file" 2>/dev/null || true
+    sed -i "s/DURATION_PLACEHOLDER/$(calculate_duration)/g" "$report_file" 2>/dev/null || true
+    sed -i "s/ALIVE_SUBS_COUNT/$alive_subs_count/g" "$report_file" 2>/dev/null || true
+    sed -i "s/PORTS_COUNT/0/g" "$report_file" 2>/dev/null || true
+    sed -i "s/JS_FILES_COUNT/$js_files_count/g" "$report_file" 2>/dev/null || true
+    sed -i "s/ENDPOINTS_COUNT/$hidden_endpoints_count/g" "$report_file" 2>/dev/null || true
+    sed -i "s/VULNS_COUNT/$vulns_count/g" "$report_file" 2>/dev/null || true
+    sed -i "s/HIDDEN_ENDPOINTS_COUNT/$hidden_endpoints_count/g" "$report_file" 2>/dev/null || true
+    sed -i "s/API_KEYS_COUNT/$api_keys_count/g" "$report_file" 2>/dev/null || true
     
-    # Generate content sections
-    generate_api_keys_content "$target_dir" | sed -i '/API_KEYS_CONTENT/r /dev/stdin' "$report_file"
-    sed -i '/API_KEYS_CONTENT/d' "$report_file"
+    # Generate content sections using temporary files (sed -i with /r doesn't work reliably)
+    local temp_file=$(mktemp)
     
-    generate_vulnerabilities_content "$target_dir" | sed -i '/VULNERABILITIES_CONTENT/r /dev/stdin' "$report_file"
-    sed -i '/VULNERABILITIES_CONTENT/d' "$report_file"
+    # API Keys content
+    generate_api_keys_content "$target_dir" > "$temp_file"
+    sed -i "/API_KEYS_CONTENT/r $temp_file" "$report_file" 2>/dev/null || true
+    sed -i '/API_KEYS_CONTENT/d' "$report_file" 2>/dev/null || true
     
-    generate_hidden_endpoints_content "$target_dir" | sed -i '/HIDDEN_ENDPOINTS_CONTENT/r /dev/stdin' "$report_file"
-    sed -i '/HIDDEN_ENDPOINTS_CONTENT/d' "$report_file"
+    # Vulnerabilities content  
+    generate_vulnerabilities_content "$target_dir" > "$temp_file"
+    sed -i "/VULNERABILITIES_CONTENT/r $temp_file" "$report_file" 2>/dev/null || true
+    sed -i '/VULNERABILITIES_CONTENT/d' "$report_file" 2>/dev/null || true
     
-    generate_subdomains_content "$target_dir" | sed -i '/SUBDOMAINS_CONTENT/r /dev/stdin' "$report_file"
-    sed -i '/SUBDOMAINS_CONTENT/d' "$report_file"
+    # Hidden endpoints content
+    generate_hidden_endpoints_content "$target_dir" > "$temp_file"
+    sed -i "/HIDDEN_ENDPOINTS_CONTENT/r $temp_file" "$report_file" 2>/dev/null || true
+    sed -i '/HIDDEN_ENDPOINTS_CONTENT/d' "$report_file" 2>/dev/null || true
     
-    generate_js_files_content "$target_dir" | sed -i '/JS_FILES_CONTENT/r /dev/stdin' "$report_file"
-    sed -i '/JS_FILES_CONTENT/d' "$report_file"
+    # Subdomains content
+    generate_subdomains_content "$target_dir" > "$temp_file"
+    sed -i "/SUBDOMAINS_CONTENT/r $temp_file" "$report_file" 2>/dev/null || true
+    sed -i '/SUBDOMAINS_CONTENT/d' "$report_file" 2>/dev/null || true
     
-    generate_ports_content "$target_dir" | sed -i '/PORTS_CONTENT/r /dev/stdin' "$report_file"
-    sed -i '/PORTS_CONTENT/d' "$report_file"
+    # JS files content
+    generate_js_files_content "$target_dir" > "$temp_file"
+    sed -i "/JS_FILES_CONTENT/r $temp_file" "$report_file" 2>/dev/null || true
+    sed -i '/JS_FILES_CONTENT/d' "$report_file" 2>/dev/null || true
+    
+    # Clean up temporary file
+    rm -f "$temp_file"
 }
 
 #######################################
@@ -646,21 +652,30 @@ generate_js_files_content() {
     fi
 }
 
-generate_ports_content() {
-    local target_dir="$1"
-    if [[ -f "${target_dir}/ports.txt" && -s "${target_dir}/ports.txt" ]]; then
-        echo "<ul class='finding-list'>"
-        while IFS= read -r port; do
-            echo "<li class='finding-item'>$port</li>"
-        done < "${target_dir}/ports.txt"
-        echo "</ul>"
-    else
-        echo "<p>No open ports found.</p>"
-    fi
-}
+
 
 calculate_duration() {
-    echo "~45 minutes"  # Placeholder - could be calculated from logs
+    # Simple duration calculation based on log timestamps if available
+    local duration="~45 minutes"  # Default placeholder
+    
+    # Try to calculate from log file if available
+    if [[ -n "${LOG_FILE:-}" && -f "$LOG_FILE" ]]; then
+        local start_time=$(head -1 "$LOG_FILE" 2>/dev/null | grep -o '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}' | head -1)
+        local end_time=$(tail -1 "$LOG_FILE" 2>/dev/null | grep -o '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}' | tail -1)
+        
+        if [[ -n "$start_time" && -n "$end_time" ]]; then
+            local start_seconds=$(date -d "$start_time" +%s 2>/dev/null)
+            local end_seconds=$(date -d "$end_time" +%s 2>/dev/null)
+            
+            if [[ -n "$start_seconds" && -n "$end_seconds" ]]; then
+                local diff=$((end_seconds - start_seconds))
+                local minutes=$((diff / 60))
+                duration="${minutes} minutes"
+            fi
+        fi
+    fi
+    
+    echo "$duration"
 }
 
 # If script is executed directly
