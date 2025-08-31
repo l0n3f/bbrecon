@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 # bbrecon.sh - Bug Bounty Reconnaissance Framework
-# Strict bash configuration
-set -Eeuo pipefail
+# Strict bash configuration - but allow for graceful error handling
+set -Euo pipefail
 IFS=$'\n\t'
 
 # Base configuration
 readonly BASE_DIR="/home/l0n3/bugbounty"
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR="/home/l0n3/bbrecon"
 
 # Global variables
 TARGET=""
@@ -18,6 +18,50 @@ TELEGRAM_ENABLED=true
 # Load utilities
 source "${SCRIPT_DIR}/utils/telegram.sh"
 source "${SCRIPT_DIR}/utils/report_generator.sh"
+
+#######################################
+# Banner display
+#######################################
+
+show_banner() {
+    echo "██████╗ ██████╗ ██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗"
+    echo "██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║"
+    echo "██████╔╝██████╔╝██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║"
+    echo "██╔══██╗██╔══██╗██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║"
+    echo "██████╔╝██████╔╝██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║"
+    echo "╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝"
+    echo "================================================================"
+    echo "     Bug Bounty Reconnaissance Framework | Created by d0x"
+    echo "    Stealth Mode | Rate Limited | Secure | JS Secret Hunter"
+    echo "================================================================"
+    echo ""
+}
+
+show_help() {
+    show_banner
+    echo "USAGE:"
+    echo "  bbrecon [OPTIONS]"
+    echo ""
+    echo "OPTIONS:"
+    echo "  -t, --target TARGET    Specify target domain directly"
+    echo "  --no-telegram         Disable Telegram notifications"
+    echo "  -h, --help            Show this help message"
+    echo ""
+    echo "EXAMPLES:"
+    echo "  bbrecon -t example.com"
+    echo "  bbrecon --target example.com --no-telegram"
+    echo "  bbrecon"
+    echo ""
+    echo "FEATURES:"
+    echo "  • Subdomain enumeration with subfinder + httpx"
+    echo "  • JavaScript file discovery with katana + gau"
+    echo "  • Secret detection (Firebase, AWS, GitHub, Stripe...)"
+    echo "  • URL extraction from JS files"
+    echo "  • HTML reports with dark mode"
+    echo "  • Telegram notifications"
+    echo "  • Rate limiting for stealth reconnaissance"
+    echo ""
+}
 
 #######################################
 # Logging functions
@@ -94,7 +138,7 @@ notify_module_done() {
 #######################################
 
 load_config() {
-    local env_file="${BASE_DIR}/.env"
+    local env_file="${SCRIPT_DIR}/.env"
     
     if [[ ! -f "$env_file" ]]; then
         log_error "Configuration file not found: $env_file"
@@ -175,86 +219,259 @@ handle_existing_target_dir() {
 }
 
 #######################################
+# JavaScript analysis with gau and wget
+#######################################
+
+run_js_crawling() {
+    log_info "Starting JavaScript crawling phase"
+    
+    echo "[+] ==> JAVASCRIPT CRAWLING PHASE: Finding Alive JS Files"
+    
+    # Initialize the final alive JS files list
+    local alive_js_files="${TARGET_DIR}/alive_js_files.txt"
+    : > "$alive_js_files"
+    
+    # Step 1: JS file discovery with katana (from alive subdomains) + httpx verification
+    echo "[+] Phase 1: Crawling for JS files with katana and verifying aliveness..."
+    if [[ -f "${TARGET_DIR}/alive_subs.txt" && -s "${TARGET_DIR}/alive_subs.txt" ]]; then
+        # Use timeout to prevent hanging and better error handling
+        timeout 300 cat "${TARGET_DIR}/alive_subs.txt" | katana -depth 3 -c 2 -delay 2 2>/dev/null | grep -E "\.(js|jsx)(\?|$)" 2>/dev/null | grep -v -E "\.(json|css|png|jpg|gif|svg|woff|ttf)(\?|$)" 2>/dev/null | httpx -mc 200 -silent 2>/dev/null >> "$alive_js_files" 2>/dev/null || echo "[-] Katana/JS discovery failed"
+        
+        local katana_count=$(wc -l < "$alive_js_files" 2>/dev/null || echo 0)
+        echo "[+] Found $katana_count alive JavaScript files with katana"
+    else
+        echo "[-] No alive subdomains to crawl"
+    fi
+    
+    # Step 2: Find JS files using gau (historical/archived) + httpx verification
+    echo "[+] Phase 2: Finding JavaScript files with gau and verifying aliveness..."
+    local temp_gau="${TARGET_DIR}/temp_gau_js.txt"
+    timeout 120 gau --threads 2 "$TARGET" 2>/dev/null | grep -E "\.(js|jsx)(\?|$)" 2>/dev/null | grep -v -E "\.(json|css|png|jpg|gif|svg|woff|ttf)(\?|$)" 2>/dev/null | sort -u > "$temp_gau" 2>/dev/null || echo "[-] Gau failed to find JS files"
+    
+    if [[ -f "$temp_gau" && -s "$temp_gau" ]]; then
+        local gau_raw_count=$(wc -l < "$temp_gau")
+        echo "[+] Found $gau_raw_count raw JavaScript files with gau"
+        
+        # Verify aliveness with httpx and append to final list
+        cat "$temp_gau" | httpx -mc 200 -silent 2>/dev/null >> "$alive_js_files" 2>/dev/null || echo "[-] Gau httpx verification failed"
+        
+        # Clean up temporary file
+        rm -f "$temp_gau"
+    else
+        echo "[-] No JavaScript files found with gau"
+    fi
+    
+    # Step 3: Remove duplicates from final list
+    echo "[+] Phase 3: Finalizing unique alive JavaScript files..."
+    if [[ -f "$alive_js_files" && -s "$alive_js_files" ]]; then
+        sort -u -o "$alive_js_files" "$alive_js_files" 2>/dev/null || true
+        local total_alive_count=$(wc -l < "$alive_js_files")
+        echo "[+] Final result: $total_alive_count unique alive JavaScript files"
+    else
+        echo "[-] No alive JavaScript files found"
+        touch "$alive_js_files"
+    fi
+    
+    log_info "JavaScript crawling completed"
+    notify_module_done "js_crawling" "$alive_js_files"
+}
+
+#######################################
+# JavaScript analysis with wget
+#######################################
+
+run_js_analysis() {
+    log_info "Starting JavaScript analysis with wget"
+    
+    echo "[+] ==> JAVASCRIPT ANALYSIS PHASE: Deep Analysis of JS Files"
+    
+    # Use the alive JS files directly from the crawling phase
+    local alive_js_files="${TARGET_DIR}/alive_js_files.txt"
+    
+    if [[ ! -f "$alive_js_files" ]]; then
+        echo "[-] No alive JavaScript files found from crawling phase"
+        touch "$alive_js_files"
+    fi
+    
+    # Step 2: Download alive JS files
+    echo "[+] Phase 2: Downloading alive JavaScript files..."
+    local js_downloads_dir="${TARGET_DIR}/js_downloads"
+    mkdir -p "$js_downloads_dir"
+    
+    local downloaded_count=0
+    local failed_count=0
+    
+    if [[ -f "$alive_js_files" && -s "$alive_js_files" ]]; then
+        # Download all alive JavaScript files
+        echo "[+] Starting download of $(wc -l < "$alive_js_files") JavaScript files..."
+        while read url; do 
+            echo "[+] Downloading: $url"
+            wget -q --timeout=45 --tries=3 --no-check-certificate "$url" -P "$js_downloads_dir/" 2>/dev/null && echo "[+] Success" || echo "[-] Failed"
+        done < "$alive_js_files"
+        echo "[+] Download process completed"
+        
+        # Step 3: Extract URLs from downloaded JS files
+        echo "[+] Phase 3: Extracting URLs from JavaScript files..."
+        local extracted_urls="${TARGET_DIR}/extracted_urls.txt"
+        : > "$extracted_urls"
+        
+        if [[ -d "$js_downloads_dir" ]]; then
+            # Find all JS files and extract URLs
+            find "$js_downloads_dir" -name "*.js" -type f 2>/dev/null | while read -r js_file; do
+                echo "[+] Analyzing: $(basename "$js_file")"
+                grep -Eo "(https?://[a-zA-Z0-9\.\/\-\_]+)" "$js_file" 2>/dev/null >> "$extracted_urls" || true
+            done
+            
+            # Remove duplicates and count
+            if [[ -f "$extracted_urls" ]]; then
+                sort -u -o "$extracted_urls" "$extracted_urls" 2>/dev/null || true
+                local urls_count=$(wc -l < "$extracted_urls" 2>/dev/null || echo 0)
+                echo "[+] Extracted $urls_count unique URLs from JavaScript files"
+            else
+                echo "[-] No URLs extracted"
+                touch "$extracted_urls"
+            fi
+        fi
+        
+        # Step 4: Search for secrets in JS files
+        echo "[+] Phase 4: Searching for secrets in JavaScript files..."
+        local secrets_found="${TARGET_DIR}/js_secrets.txt"
+        : > "$secrets_found"
+        
+        if [[ -f "$alive_js_files" ]]; then
+            echo "[+] Searching for secrets in JavaScript files..."
+            
+            while IFS= read -r js_url; do
+                if [[ -n "$js_url" ]]; then
+                    echo "[+] Analyzing: $js_url"
+                    
+                    # Get filename from URL for reference
+                    js_filename=$(basename "$js_url" | cut -d'?' -f1)
+                    
+                    # Download and search for secrets in one go (with rate limiting)
+                    timeout 30 curl -s -k "$js_url" 2>/dev/null | {
+                        # Extract Firebase API keys
+                        grep -Eho "AIza[A-Za-z0-9_-]{35}" | while read -r secret; do
+                            echo "[FIREBASE] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        # Extract Stripe keys
+                        grep -Eho "sk_[A-Za-z0-9]{48}" | while read -r secret; do
+                            echo "[STRIPE_SECRET] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        grep -Eho "pk_[A-Za-z0-9]{48}" | while read -r secret; do
+                            echo "[STRIPE_PUBLIC] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        # Extract GitHub tokens
+                        grep -Eho "ghp_[A-Za-z0-9]{36}" | while read -r secret; do
+                            echo "[GITHUB_TOKEN] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        grep -Eho "gho_[A-Za-z0-9]{36}" | while read -r secret; do
+                            echo "[GITHUB_OAUTH] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        # Extract Slack tokens
+                        grep -Eho "xoxb-[A-Za-z0-9-]+" | while read -r secret; do
+                            echo "[SLACK_BOT] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        grep -Eho "xoxp-[A-Za-z0-9-]+" | while read -r secret; do
+                            echo "[SLACK_USER] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        # Extract AWS keys
+                        grep -Eho "AKIA[0-9A-Z]{16,20}" | while read -r secret; do
+                            echo "[AWS_ACCESS_KEY] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        grep -Eho "ASIA[0-9A-Z]{16,20}" | while read -r secret; do
+                            echo "[AWS_SESSION_TOKEN] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        # Extract Google OAuth tokens
+                        grep -Eho "ya29\.[0-9A-Za-z_-]+" | while read -r secret; do
+                            echo "[GOOGLE_OAUTH] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        # Extract generic API patterns with context
+                        grep -Eho "api_key[\"']*[=:][\"']*[A-Za-z0-9_-]{20,}" | while read -r secret; do
+                            echo "[API_KEY] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                        
+                        grep -Eho "apikey[\"']*[=:][\"']*[A-Za-z0-9_-]{20,}" | while read -r secret; do
+                            echo "[API_KEY] [$js_filename] $secret" >> "$secrets_found"
+                        done
+                    } 2>/dev/null || true
+                    
+                    # Rate limiting: 3 second delay between file downloads
+                    sleep 3
+                fi
+            done < "$alive_js_files"
+            
+            # Remove duplicates and clean up
+            if [[ -f "$secrets_found" ]]; then
+                sort -u -o "$secrets_found" "$secrets_found" 2>/dev/null || true
+                local secrets_count=$(wc -l < "$secrets_found" 2>/dev/null || echo 0)
+                echo "[+] Found $secrets_count potential secrets in JavaScript files"
+            else
+                echo "[-] No secrets found"
+                touch "$secrets_found"
+            fi
+        fi
+        
+        # Clean up downloaded files
+        echo "[+] Cleaning up downloaded files..."
+        rm -rf "$js_downloads_dir"
+        
+    else
+        echo "[-] No JavaScript files to download"
+        touch "${TARGET_DIR}/extracted_urls.txt" "${TARGET_DIR}/js_secrets.txt"
+    fi
+    
+    log_info "JavaScript analysis completed"
+    notify_module_done "js_analysis" "${TARGET_DIR}/extracted_urls.txt"
+}
+
+#######################################
 # Simplified reconnaissance workflow
 #######################################
 
 run_discovery() {
-    log_info "Starting discovery phase - comprehensive recon workflow"
+    log_info "Starting discovery phase - subdomain enumeration"
     
-    echo "[+] ==> DISCOVERY PHASE: Subdomains, JS Files, and Content Analysis"
+    echo "[+] ==> DISCOVERY PHASE: Subdomain Enumeration"
     
     # Step 1: Subdomain discovery with immediate alive filtering
     echo "[+] Phase 1: Recursive subdomain discovery and alive filtering..."
-    subfinder -d "$TARGET" -recursive | httpx -o "${TARGET_DIR}/alive_subs.txt" || echo "[-] Subfinder/httpx failed"
+    timeout 600 subfinder -d "$TARGET" -recursive 2>/dev/null | httpx -silent -o "${TARGET_DIR}/alive_subs.txt" 2>/dev/null || echo "[-] Subfinder/httpx failed"
     
     if [[ -f "${TARGET_DIR}/alive_subs.txt" && -s "${TARGET_DIR}/alive_subs.txt" ]]; then
         local subs_count=$(wc -l < "${TARGET_DIR}/alive_subs.txt")
         echo "[+] Found $subs_count alive subdomains"
-        
-        # Step 3: JS file discovery with katana
-        echo "[+] Phase 3: Crawling for JS files and endpoints..."
-        cat "${TARGET_DIR}/alive_subs.txt" | katana -depth 3 -rl 2 | grep -E "\.(js|jsx)(\?|$)" | grep -v -E "\.(json|css|png|jpg|gif|svg|woff|ttf)(\?|$)" | httpx -mc 200 > "${TARGET_DIR}/alive_jsfile.txt" || echo "[-] Katana/JS discovery failed"
-        
-        if [[ -f "${TARGET_DIR}/alive_jsfile.txt" && -s "${TARGET_DIR}/alive_jsfile.txt" ]]; then
-            local js_count=$(wc -l < "${TARGET_DIR}/alive_jsfile.txt")
-            echo "[+] Found $js_count JavaScript files"
-            
-            # Step 4: Extract endpoints from JS files
-            echo "[+] Phase 4: Extracting hidden endpoints from JS files..."
-            : > "${TARGET_DIR}/hidden_endpoints.txt"
-            while IFS= read -r jsfile; do
-                echo "[+] Analyzing: $jsfile"
-                
-                # Skip non-JS files that might have slipped through
-                if [[ "$jsfile" =~ \.(json|xml|css|html)(\?|$) ]]; then
-                    echo "[-] Skipping non-JS file: $jsfile"
-                    continue
-                fi
-                
-                # Improved endpoint extraction with better regex and error handling
-                curl -s --max-time 30 "$jsfile" 2>/dev/null \
-                | grep -oE '["'"'"'][/][a-zA-Z0-9_/?=&%.\-:]*["'"'"']' 2>/dev/null \
-                | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//' \
-                | grep -E '^/[a-zA-Z0-9_/?=&%.\-:]+$' \
-                | sort -u \
-                | awk -v file="$jsfile" '{print $0 " --> " file}' >> "${TARGET_DIR}/hidden_endpoints.txt" 2>/dev/null || echo "[-] Failed to analyze: $jsfile"
-            done < "${TARGET_DIR}/alive_jsfile.txt"
-            
-            local endpoints_count=$(wc -l < "${TARGET_DIR}/hidden_endpoints.txt" 2>/dev/null || echo 0)
-            echo "[+] Extracted $endpoints_count hidden endpoints"
-        else
-            echo "[-] No JS files found"
-            touch "${TARGET_DIR}/hidden_endpoints.txt"
-        fi
     else
-        echo "[-] No alive subdomains found, creating empty files"
-        touch "${TARGET_DIR}/alive_jsfile.txt" "${TARGET_DIR}/hidden_endpoints.txt"
+        echo "[-] No alive subdomains found"
+        touch "${TARGET_DIR}/alive_subs.txt"
     fi
-    
     
     log_info "Discovery phase completed"
     notify_module_done "discovery" "${TARGET_DIR}/alive_subs.txt"
 }
 
 run_analysis() {
-    log_info "Starting analysis phase - vulnerability scanning and reporting"
+    log_info "Starting analysis phase - reporting and summary"
     
-    echo "[+] ==> ANALYSIS PHASE: Vulnerability Scanning and Summary"
+    echo "[+] ==> ANALYSIS PHASE: Reporting and Summary"
     
-    # Step 1: Vulnerability scanning on JS files and alive hosts
-    echo "[+] Phase 1: Nuclei scanning for tokens and vulnerabilities..."
-    : > "${TARGET_DIR}/vulns.txt"
-    
-    # Scan JS files for tokens/exposure
-    if [[ -f "${TARGET_DIR}/alive_jsfile.txt" && -s "${TARGET_DIR}/alive_jsfile.txt" ]]; then
-        nuclei -l "${TARGET_DIR}/alive_jsfile.txt" -tags token,exposure -o "${TARGET_DIR}/nuclei_tokens.json" || echo "[-] Nuclei token scan failed"
-        cat "${TARGET_DIR}/nuclei_tokens.json" >> "${TARGET_DIR}/vulns.txt" 2>/dev/null
-    fi
-    
-    # Scan alive subdomains for general vulnerabilities
-    if [[ -f "${TARGET_DIR}/alive_subs.txt" && -s "${TARGET_DIR}/alive_subs.txt" ]]; then
-        nuclei -l "${TARGET_DIR}/alive_subs.txt" -severity medium,high,critical >> "${TARGET_DIR}/vulns.txt" || echo "[-] Nuclei general scan failed"
-    fi
+    # Clean up unnecessary files
+    echo "[+] Phase 1: Cleaning up unnecessary files..."
+    rm -f "${TARGET_DIR}/katana_js_files.txt" 2>/dev/null || true
+    rm -f "${TARGET_DIR}/gau_js_files.txt" 2>/dev/null || true
+    rm -f "${TARGET_DIR}/all_js_files.txt" 2>/dev/null || true
+    rm -f "${TARGET_DIR}/vulns.txt" 2>/dev/null || true
+
     
     # Step 2: Generate comprehensive summary
     echo "[+] Phase 2: Generating comprehensive summary..."
@@ -269,33 +486,32 @@ EOF
     
     # Calculate statistics
     local alive_subs_count=$(wc -l < "${TARGET_DIR}/alive_subs.txt" 2>/dev/null || echo 0)
-    local js_files_count=$(wc -l < "${TARGET_DIR}/alive_jsfile.txt" 2>/dev/null || echo 0)
-    local endpoints_count=$(wc -l < "${TARGET_DIR}/hidden_endpoints.txt" 2>/dev/null || echo 0)
-    local vulns_count=$(wc -l < "${TARGET_DIR}/vulns.txt" 2>/dev/null || echo 0)
+    local alive_js_count=$(wc -l < "${TARGET_DIR}/alive_js_files.txt" 2>/dev/null || echo 0)
+    local extracted_urls_count=$(wc -l < "${TARGET_DIR}/extracted_urls.txt" 2>/dev/null || echo 0)
+    local secrets_count=$(wc -l < "${TARGET_DIR}/js_secrets.txt" 2>/dev/null || echo 0)
     
     cat << EOF >> "$summary_file"
 - 🌐 Alive subdomains: $alive_subs_count
-- 📜 JavaScript files found: $js_files_count
-- 🔗 Hidden endpoints extracted: $endpoints_count
-- 🚨 Vulnerabilities identified: $vulns_count
+- 📜 Alive JavaScript files: $alive_js_count
+- 🔗 URLs extracted from JS files: $extracted_urls_count
+- 🔑 Secrets found in JS files: $secrets_count
 
 ## 📁 Generated Files
 - alive_subs.txt - Live subdomains
-- alive_jsfile.txt - Active JavaScript files
-- hidden_endpoints.txt - Hidden endpoints with source files
-- vulns.txt - Vulnerability findings
-- nuclei_tokens.json - Token/credential exposures
+- alive_js_files.txt - Verified alive JavaScript files
+- extracted_urls.txt - URLs extracted from JS files
+- js_secrets.txt - Secrets found in JavaScript files
 
 ## 🎯 Next Steps
 1. Manual review of JavaScript files for sensitive data
-2. Test extracted endpoints for authentication bypasses
-3. Analyze nuclei findings for exploitable vulnerabilities
+2. Test extracted URLs for authentication bypasses
+3. Analyze secrets found for potential exposures
 
 ---
 Generated by bbrecon framework
 EOF
     
-    local total_findings=$((alive_subs_count + js_files_count + endpoints_count + vulns_count))
+    local total_findings=$((alive_subs_count + alive_js_count + extracted_urls_count + secrets_count))
     echo "[+] Analysis complete: $total_findings total findings across all categories"
     
     # Generate beautiful HTML report
@@ -314,6 +530,12 @@ main() {
     local target_arg=""
     local no_telegram=false
     
+    # If no arguments provided, show help
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+    
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -326,14 +548,13 @@ main() {
                 shift
                 ;;
             -h|--help)
-                echo "Usage: $0 [-t|--target TARGET] [--no-telegram]"
-                echo "  -t, --target TARGET    Specify target directly"
-                echo "  --no-telegram         Disable Telegram notifications"
-                echo "  -h, --help            Show this help"
+                show_help
                 exit 0
                 ;;
             *)
-                log_error "Unknown argument: $1"
+                echo "Error: Unknown argument: $1"
+                echo ""
+                show_help
                 exit 1
                 ;;
         esac
@@ -365,6 +586,9 @@ main() {
     # Configure specific log file
     LOG_FILE="${BASE_DIR}/logs/bbrecon-${TARGET}-$(timestamp).log"
     
+    # Display banner
+    show_banner
+    
     log_info "=== Starting bbrecon for target: $TARGET ==="
     
     # Handle existing target directory
@@ -378,6 +602,8 @@ main() {
     
     # Execute simplified workflow
     run_discovery
+    run_js_crawling
+    run_js_analysis
     run_analysis
     
     # Final notification

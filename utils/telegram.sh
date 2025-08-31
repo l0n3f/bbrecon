@@ -134,7 +134,7 @@ test_telegram() {
 }
 
 # If script is executed directly (not as source)
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
     echo "Telegram utilities script for bbrecon"
     echo "Usage: source telegram.sh"
     echo ""

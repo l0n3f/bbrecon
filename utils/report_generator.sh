@@ -20,14 +20,11 @@ generate_html_report() {
     
     # Calculate statistics
     local alive_subs_count=$(wc -l < "${target_dir}/alive_subs.txt" 2>/dev/null || echo 0)
-    local js_files_count=$(wc -l < "${target_dir}/alive_jsfile.txt" 2>/dev/null || echo 0)
-    local vulns_count=$(wc -l < "${target_dir}/vulns.txt" 2>/dev/null || echo 0)
-    local hidden_endpoints_count=$(wc -l < "${target_dir}/hidden_endpoints.txt" 2>/dev/null || echo 0)
+    local js_files_count=$(wc -l < "${target_dir}/alive_js_files.txt" 2>/dev/null || echo 0)
+    local secrets_count=$(wc -l < "${target_dir}/js_secrets.txt" 2>/dev/null || echo 0)
+    local extracted_urls_count=$(wc -l < "${target_dir}/extracted_urls.txt" 2>/dev/null || echo 0)
     
-    # Analyze for sensitive findings
-    analyze_sensitive_data "$target_dir" || {
-        echo "[WARN] Failed to analyze sensitive data, continuing..."
-    }
+    # Skip legacy sensitive data analysis
     
     # Generate HTML
     cat << 'EOF' > "$report_file"
@@ -46,23 +43,25 @@ generate_html_report() {
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             min-height: 100vh;
             padding: 20px;
+            color: #e0e0e0;
         }
         
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
+            background: #1e1e2e;
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             overflow: hidden;
+            border: 1px solid #313244;
         }
         
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: linear-gradient(135deg, #a6e3a1 0%, #74c0fc 50%, #b794f6 100%);
+            color: #1e1e2e;
             padding: 40px;
             text-align: center;
             position: relative;
@@ -94,9 +93,9 @@ generate_html_report() {
         }
         
         .meta-info {
-            background: #f8f9fa;
+            background: #181825;
             padding: 20px 40px;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #313244;
         }
         
         .meta-grid {
@@ -111,14 +110,14 @@ generate_html_report() {
         
         .meta-label {
             font-size: 0.9rem;
-            color: #6c757d;
+            color: #9399b2;
             margin-bottom: 5px;
         }
         
         .meta-value {
             font-size: 1.1rem;
             font-weight: 600;
-            color: #495057;
+            color: #cdd6f4;
         }
         
         .stats-grid {
@@ -129,13 +128,13 @@ generate_html_report() {
         }
         
         .stat-card {
-            background: white;
+            background: #181825;
             border-radius: 15px;
             padding: 30px;
             text-align: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
-            border: 1px solid #e9ecef;
+            border: 1px solid #313244;
         }
         
         .stat-card:hover {
@@ -163,23 +162,24 @@ generate_html_report() {
         
         .findings-section {
             padding: 40px;
-            background: #f8f9fa;
+            background: #181825;
         }
         
         .section-title {
             font-size: 2rem;
             margin-bottom: 30px;
-            color: #495057;
-            border-bottom: 3px solid #667eea;
+            color: #cdd6f4;
+            border-bottom: 3px solid #a6e3a1;
             padding-bottom: 10px;
         }
         
         .finding-card {
-            background: white;
+            background: #1e1e2e;
             border-radius: 10px;
             margin-bottom: 20px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
             overflow: hidden;
+            border: 1px solid #313244;
         }
         
         .finding-header {
@@ -188,6 +188,7 @@ generate_html_report() {
             display: flex;
             align-items: center;
             gap: 10px;
+            color: #cdd6f4;
         }
         
         .finding-content {
@@ -446,7 +447,7 @@ EOF
     # Replace placeholders with actual data
     replace_placeholders "$report_file" "$target" "$target_dir" \
         "$alive_subs_count" "$js_files_count" \
-        "$vulns_count" "$hidden_endpoints_count" || {
+        "$secrets_count" "$extracted_urls_count" || {
         echo "[ERROR] Failed to replace placeholders in HTML report"
         return 1
     }
@@ -527,8 +528,8 @@ replace_placeholders() {
     local target_dir="$3"
     local alive_subs_count="$4"
     local js_files_count="$5"
-    local vulns_count="$6"
-    local hidden_endpoints_count="$7"
+    local secrets_count="$6"
+    local extracted_urls_count="$7"
     
     # Calculate API keys count
     local api_keys_count=0
@@ -543,10 +544,10 @@ replace_placeholders() {
     sed -i "s/ALIVE_SUBS_COUNT/$alive_subs_count/g" "$report_file" 2>/dev/null || true
     sed -i "s/PORTS_COUNT/0/g" "$report_file" 2>/dev/null || true
     sed -i "s/JS_FILES_COUNT/$js_files_count/g" "$report_file" 2>/dev/null || true
-    sed -i "s/ENDPOINTS_COUNT/$hidden_endpoints_count/g" "$report_file" 2>/dev/null || true
-    sed -i "s/VULNS_COUNT/$vulns_count/g" "$report_file" 2>/dev/null || true
-    sed -i "s/HIDDEN_ENDPOINTS_COUNT/$hidden_endpoints_count/g" "$report_file" 2>/dev/null || true
-    sed -i "s/API_KEYS_COUNT/$api_keys_count/g" "$report_file" 2>/dev/null || true
+    sed -i "s/ENDPOINTS_COUNT/$extracted_urls_count/g" "$report_file" 2>/dev/null || true
+    sed -i "s/VULNS_COUNT/0/g" "$report_file" 2>/dev/null || true
+    sed -i "s/HIDDEN_ENDPOINTS_COUNT/$extracted_urls_count/g" "$report_file" 2>/dev/null || true
+    sed -i "s/API_KEYS_COUNT/$secrets_count/g" "$report_file" 2>/dev/null || true
     
     # Generate content sections using temporary files (sed -i with /r doesn't work reliably)
     local temp_file=$(mktemp)
@@ -585,44 +586,34 @@ replace_placeholders() {
 #######################################
 generate_api_keys_content() {
     local target_dir="$1"
-    if [[ -f "${target_dir}/sensitive_findings.txt" && -s "${target_dir}/sensitive_findings.txt" ]]; then
+    if [[ -f "${target_dir}/js_secrets.txt" && -s "${target_dir}/js_secrets.txt" ]]; then
         echo "<ul class='finding-list'>"
-        while IFS='|' read -r type source finding; do
+        while IFS= read -r secret_line; do
             echo "<li class='api-key-item'>"
-            echo "<strong>Type:</strong> $type<br>"
-            echo "<strong>Source:</strong> $source<br>"
-            echo "<strong>Finding:</strong> <code>$finding</code>"
+            echo "<code style='color: #f38ba8; background: #313244; padding: 4px 8px; border-radius: 4px;'>$secret_line</code>"
             echo "</li>"
-        done < "${target_dir}/sensitive_findings.txt"
+        done < "${target_dir}/js_secrets.txt"
         echo "</ul>"
     else
-        echo "<p>No API keys or sensitive data found.</p>"
+        echo "<p style='color: #9399b2;'>No API keys or sensitive data found.</p>"
     fi
 }
 
 generate_vulnerabilities_content() {
     local target_dir="$1"
-    if [[ -f "${target_dir}/vulns.txt" && -s "${target_dir}/vulns.txt" ]]; then
-        echo "<ul class='finding-list'>"
-        head -50 "${target_dir}/vulns.txt" | while IFS= read -r vuln; do
-            echo "<li class='vuln-item'>$vuln</li>"
-        done
-        echo "</ul>"
-    else
-        echo "<p>No vulnerabilities found.</p>"
-    fi
+    echo "<p style='color: #9399b2;'>Vulnerability scanning has been disabled in this version for stealth reconnaissance.</p>"
 }
 
 generate_hidden_endpoints_content() {
     local target_dir="$1"
-    if [[ -f "${target_dir}/hidden_endpoints.txt" && -s "${target_dir}/hidden_endpoints.txt" ]]; then
+    if [[ -f "${target_dir}/extracted_urls.txt" && -s "${target_dir}/extracted_urls.txt" ]]; then
         echo "<ul class='finding-list'>"
-        head -100 "${target_dir}/hidden_endpoints.txt" | while IFS= read -r endpoint; do
-            echo "<li class='endpoint-item'>$endpoint</li>"
+        head -100 "${target_dir}/extracted_urls.txt" | while IFS= read -r endpoint; do
+            echo "<li class='endpoint-item' style='background: #313244; border: 1px solid #45475a; color: #cdd6f4;'>$endpoint</li>"
         done
         echo "</ul>"
     else
-        echo "<p>No hidden endpoints found.</p>"
+        echo "<p style='color: #9399b2;'>No hidden endpoints found.</p>"
     fi
 }
 
@@ -641,14 +632,14 @@ generate_subdomains_content() {
 
 generate_js_files_content() {
     local target_dir="$1"
-    if [[ -f "${target_dir}/alive_jsfile.txt" && -s "${target_dir}/alive_jsfile.txt" ]]; then
+    if [[ -f "${target_dir}/alive_js_files.txt" && -s "${target_dir}/alive_js_files.txt" ]]; then
         echo "<ul class='finding-list'>"
         while IFS= read -r jsfile; do
-            echo "<li class='finding-item'><a href='$jsfile' target='_blank'>$jsfile</a></li>"
-        done < "${target_dir}/alive_jsfile.txt"
+            echo "<li class='finding-item' style='color: #cdd6f4;'><a href='$jsfile' target='_blank' style='color: #74c0fc; text-decoration: none;'>$jsfile</a></li>"
+        done < "${target_dir}/alive_js_files.txt"
         echo "</ul>"
     else
-        echo "<p>No JavaScript files found.</p>"
+        echo "<p style='color: #9399b2;'>No JavaScript files found.</p>"
     fi
 }
 
@@ -679,7 +670,7 @@ calculate_duration() {
 }
 
 # If script is executed directly
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
     if [[ $# -ne 2 ]]; then
         echo "Usage: $0 <target> <target_directory>"
         exit 1

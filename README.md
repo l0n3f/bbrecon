@@ -1,16 +1,29 @@
-# 🎯 bbrecon - Bug Bounty Reconnaissance Framework
+# bbrecon - Bug Bounty Reconnaissance Framework
 
-An automated reconnaissance framework designed for bug bounty hunting that combines subdomain discovery, JavaScript file analysis, and vulnerability scanning with real-time Telegram notifications.
+```
+██████╗ ██████╗ ██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗
+██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║
+██████╔╝██████╔╝██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║
+██╔══██╗██╔══██╗██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║
+██████╔╝██████╔╝██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║
+╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝
+================================================================
+     Bug Bounty Reconnaissance Framework | Created by d0x
+    Stealth Mode | Rate Limited | Secure | JS Secret Hunter
+================================================================
+```
+
+An advanced stealth reconnaissance framework designed for bug bounty hunting with focus on JavaScript analysis, secret detection, and rate-limited operations to avoid detection.
 
 ## 🚀 Features
 
-- **Comprehensive Subdomain Discovery**: Recursive enumeration with alive filtering
-- **JavaScript File Analysis**: Deep crawling and endpoint extraction from JS files
-
-- **Vulnerability Scanning**: Automated nuclei scans for tokens and vulnerabilities
-- **Real-time Notifications**: Telegram integration for progress updates
-- **Detailed Reporting**: Comprehensive summary with statistics and next steps
-- **Error Handling**: Robust error management with automatic notifications
+- **🔍 Stealth Subdomain Discovery**: Rate-limited enumeration with alive filtering
+- **📜 JavaScript File Analysis**: Deep crawling and endpoint extraction from JS files
+- **🔑 Secret Detection**: Firebase, AWS, GitHub, Stripe API keys and tokens
+- **🌙 Dark Mode HTML Reports**: Beautiful responsive reports with findings
+- **📱 Real-time Telegram Notifications**: Progress updates and result delivery
+- **⚡ Rate Limiting**: Conservative approach to avoid WAF detection
+- **🎯 No Vulnerability Scanning**: Focus on reconnaissance, not aggressive testing
 
 ## 📁 Project Structure
 
@@ -19,9 +32,9 @@ bbrecon/
 ├── bbrecon.sh              # Main reconnaissance script
 ├── env.example             # Configuration template
 ├── README.md               # This file
-├── logs/                   # Execution logs directory
 └── utils/
-    └── telegram.sh         # Telegram notification utilities
+    ├── telegram.sh         # Telegram notification utilities
+    └── report_generator.sh # HTML report generation
 ```
 
 ## 🛠️ Installation
@@ -35,19 +48,17 @@ Install the required tools:
 go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
 go install -v github.com/projectdiscovery/katana/cmd/katana@latest
-go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
 
 # Additional tools
 go install github.com/lc/gau@latest
-go install github.com/tomnomnom/waybackurls@latest
 
 # System tools
-sudo apt install curl jq
+sudo apt install curl wget jq
 ```
 
 ### Setup
 
-1. **Clone or download the project**:
+1. **Clone the repository**:
 ```bash
 git clone <repository-url>
 cd bbrecon
@@ -55,13 +66,18 @@ cd bbrecon
 
 2. **Make scripts executable**:
 ```bash
-chmod +x bbrecon.sh utils/telegram.sh
+chmod +x bbrecon.sh utils/telegram.sh utils/report_generator.sh
 ```
 
 3. **Configure environment**:
 ```bash
 cp env.example .env
 nano .env  # Edit with your configuration
+```
+
+4. **Global installation** (optional):
+```bash
+sudo ln -sf $(pwd)/bbrecon.sh /usr/local/bin/bbrecon
 ```
 
 ## ⚙️ Configuration
@@ -79,8 +95,8 @@ nano .env  # Edit with your configuration
 
 3. **Configure .env file**:
 ```bash
-TELEGRAM_BOT_TOKEN="your_bot_token_here"
-CHAT_ID="your_chat_id_here"
+TELEGRAM_BOT_TOKEN="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+CHAT_ID="123456789"
 TELEGRAM_ENABLED=true
 ```
 
@@ -99,17 +115,17 @@ TELEGRAM_ENABLED=true
 ### Basic Usage
 
 ```bash
-# Interactive mode (prompts for target)
-./bbrecon.sh
+# Show help and options
+bbrecon
 
 # Specify target directly
-./bbrecon.sh -t example.com
+bbrecon -t example.com
 
 # Disable Telegram notifications
-./bbrecon.sh --no-telegram -t example.com
+bbrecon --no-telegram -t example.com
 
 # Show help
-./bbrecon.sh --help
+bbrecon -h
 ```
 
 ### Command Line Options
@@ -123,97 +139,122 @@ TELEGRAM_ENABLED=true
 ## 🔄 Workflow
 
 ### Phase 1: Discovery
-1. **Subdomain Discovery**: Recursive enumeration using subfinder
+1. **Subdomain Discovery**: Recursive enumeration using subfinder (rate limited)
 2. **Alive Filtering**: HTTP probing to identify responsive subdomains
-3. **JavaScript Discovery**: Web crawling with katana to find JS files
-4. **Endpoint Extraction**: Regex analysis of JS files for hidden endpoints
 
-### Phase 2: Analysis
-1. **Vulnerability Scanning**: Nuclei scans for tokens and vulnerabilities
-2. **Report Generation**: Comprehensive summary with statistics
-3. **File Organization**: Structured output for manual review
+### Phase 2: JavaScript Crawling
+1. **Katana Crawling**: Web crawling with 2s delays and 2 concurrent threads
+2. **GAU Historical Data**: Archive.org and other sources (2 threads)
+3. **Alive Verification**: httpx verification of all discovered JS files
+
+### Phase 3: JavaScript Analysis
+1. **File Download**: curl with 3-second delays between downloads
+2. **URL Extraction**: Regex analysis for hidden endpoints and APIs
+3. **Secret Detection**: Precise patterns for API keys and tokens
+
+### Phase 4: Reporting
+1. **HTML Report Generation**: Dark mode responsive report
+2. **Summary Creation**: Text-based findings summary
+3. **Telegram Delivery**: Automatic report and file delivery
 
 ## 📊 Output Files
 
-After execution, you'll find these files in `/home/l0n3/bugbounty/<target>/`:
+Results are stored in `/home/l0n3/bugbounty/<target>/`:
 
 | File | Description |
 |------|-------------|
 | `alive_subs.txt` | Live subdomains |
-| `ports.txt` | Open ports (IP:Port format) |
-| `alive_jsfile.txt` | Active JavaScript files |
-| `hidden_endpoints.txt` | Endpoints extracted from JS files |
-| `vulns.txt` | Vulnerability findings |
-| `nuclei_tokens.json` | Token/credential exposures |
-| `resumen.txt` | Comprehensive report |
+| `alive_js_files.txt` | Active JavaScript files |
+| `extracted_urls.txt` | URLs/endpoints extracted from JS files |
+| `js_secrets.txt` | API keys and secrets with source files |
+| `resumen.txt` | Comprehensive text report |
+| `bbrecon_report.html` | Dark mode HTML report |
+
+## 🔑 Secret Detection
+
+The framework detects various types of API keys and secrets:
+
+- **🔥 Firebase**: `AIza[A-Za-z0-9_-]{35}`
+- **💳 Stripe**: `sk_[A-Za-z0-9]{48}`, `pk_[A-Za-z0-9]{48}`
+- **🐙 GitHub**: `ghp_[A-Za-z0-9]{36}`, `gho_[A-Za-z0-9]{36}`
+- **💬 Slack**: `xoxb-`, `xoxp-`, `xoxa-`, `xoxr-`
+- **☁️ AWS**: `AKIA[0-9A-Z]{16,20}`, `ASIA[0-9A-Z]{16,20}`
+- **🔍 Google OAuth**: `ya29.`, `1//[0-9A-Za-z_-]{35}`
+
+Example output:
+```
+[FIREBASE] [main.js] AIzaSyDuP6W66GAC2Gad1W2mSQd**************
+[STRIPE_SECRET] [checkout.js] sk_live_4eC39HqLyjWDarj**************
+```
 
 ## 📱 Telegram Notifications
 
-You'll receive real-time notifications for:
+Real-time notifications include:
 
-- 🚀 **Start**: When reconnaissance begins
-- ✅ **Discovery Complete**: With subdomain count
-- ✅ **Analysis Complete**: With summary statistics
-- ✅ **Final Report**: With attached summary document
-- ❌ **Errors**: If any critical failures occur
+- **🚀 Start**: When reconnaissance begins
+- **✅ Phase Complete**: Discovery, crawling, analysis completion
+- **📊 Final Report**: Summary with file attachments
+- **❌ Errors**: Critical failures and warnings
 
-Example notification:
+Example notifications:
 ```
-✅ discovery completed for example.com — 45 lines in alive_subs.txt
-```
-
-## 📝 Logging
-
-Each execution generates a detailed log file:
-```
-logs/bbrecon-<target>-<timestamp>.log
+🚀 bbrecon started for example.com
+✅ Discovery completed: 26 subdomains found
+✅ JS Analysis completed: 2 secrets found
+📄 [Document] resumen.txt
+📄 [Document] bbrecon_report.html
 ```
 
-Log entries include:
-- Timestamps for all operations
-- Success/failure status
-- Tool outputs and errors
-- Performance metrics
+## 🎨 Rate Limiting & Stealth
 
-## 🎨 Customization
+### Conservative Configuration
+- **Katana**: 150 req/min, 2s delay, 2 threads
+- **JS Downloads**: 3-second delays between files
+- **GAU**: 2 threads maximum
+- **No aggressive scanning**: No nuclei or port scanning
 
-### Adding Custom Tools
+### Designed for Bug Bounty
+- Respects rate limits to avoid detection
+- Non-intrusive reconnaissance approach
+- Focus on passive information gathering
+- Stealth-first methodology
 
-You can easily extend the framework by modifying the discovery and analysis phases in `bbrecon.sh`:
+## 🌙 HTML Reports
 
+Beautiful dark mode reports featuring:
+
+- **📊 Statistics Dashboard**: Live counts and metrics
+- **🔑 Secret Findings**: Organized by type with source files
+- **🔗 Extracted URLs**: All discovered endpoints
+- **🌐 Live Subdomains**: Clickable subdomain list
+- **📜 JavaScript Files**: Direct links to analyzed files
+- **📱 Responsive Design**: Works on all devices
+
+## 🔧 Advanced Configuration
+
+### Custom Rate Limits
+
+Modify in `bbrecon.sh`:
 ```bash
-# In run_discovery() function
-echo "[+] Running custom subdomain tool..."
-your_custom_tool -d "$TARGET" >> "${TARGET_DIR}/custom_results.txt"
+# Katana settings
+katana -depth 3 -c 2 -delay 2
 
-# In run_analysis() function  
-echo "[+] Running custom vulnerability scanner..."
-your_vuln_scanner -l "${TARGET_DIR}/alive_subs.txt" >> "${TARGET_DIR}/vulns.txt"
+# Download delays
+sleep 3  # Between JS file downloads
+
+# GAU threads
+gau --threads 2
 ```
 
-### Directory Management
+### Adding Custom Patterns
 
-The script handles existing target directories with three options:
-1. **Overwrite**: Moves existing directory to timestamped backup
-2. **Append**: Keeps existing files and adds new results
-3. **Cancel**: Exits without changes
-
-## 🔧 Advanced Features
-
-### Error Handling
-- Automatic error detection and Telegram notifications
-- Graceful degradation when tools fail
-- Comprehensive logging for debugging
-
-### Performance Optimization
-- Only scans alive hosts for ports
-- Efficient pipeline processing
-- Rate limiting for external APIs
-
-### Security
-- Secure .env file handling (add to .gitignore)
-- No hardcoded credentials
-- Configurable timeouts and rate limits
+Add to secret detection in `run_js_analysis()`:
+```bash
+# Custom API pattern
+grep -Eho "custom_api_[A-Za-z0-9]{32}" | while read -r secret; do
+    echo "[CUSTOM_API] [$js_filename] $secret" >> "$secrets_found"
+done
+```
 
 ## 🐛 Troubleshooting
 
@@ -222,91 +263,105 @@ The script handles existing target directories with three options:
 1. **Tools not found**:
 ```bash
 # Verify tools are in PATH
-which subfinder httpx katana nuclei
+which subfinder httpx katana gau
 ```
 
 2. **Telegram not working**:
 ```bash
 # Test Telegram configuration
-source utils/telegram.sh && test_telegram
+cd /home/l0n3/bbrecon
+source .env && source utils/telegram.sh && send_message "Test"
 ```
 
-3. **Permission denied**:
-```bash
-# Make scripts executable
-chmod +x bbrecon.sh utils/telegram.sh
-```
+3. **No secrets found**:
+   - Check if JS files are being downloaded
+   - Verify grep patterns are working
+   - Look at `alive_js_files.txt` for discovered files
 
-4. **Empty results**:
-   - Check target domain is valid and accessible
-   - Verify tools have proper configuration
-   - Review log files for detailed error messages
+4. **Katana failing**:
+   - Check delay syntax (should be `-delay 2`, not `-delay 2s`)
+   - Verify subdomain list exists and has content
 
 ### Debug Mode
 
-Enable verbose logging by modifying the script:
+Enable verbose logging:
 ```bash
-# Add at the top of bbrecon.sh
+# Edit bbrecon.sh and add at top
 set -x  # Enable debug mode
 ```
 
 ## 📋 Best Practices
 
-1. **Always use .env**: Never hardcode sensitive tokens
-2. **Regular updates**: Keep tools updated for best results
-3. **Rate limiting**: Respect target rate limits to avoid blocking
-4. **Manual review**: Always manually verify automated findings
-5. **Responsible disclosure**: Follow responsible disclosure practices
+1. **Always use rate limiting**: Default settings are conservative for good reason
+2. **Manual verification**: Always manually verify secret findings
+3. **Responsible testing**: Only test domains you have permission to test
+4. **Regular updates**: Keep tools updated for best results
+5. **Secure storage**: Never commit .env files or findings to public repos
 
 ## 🔐 Security Considerations
 
-- Store .env files securely (never commit to version control)
-- Use dedicated Telegram bots for different projects
-- Regularly rotate API tokens
-- Monitor tool outputs for sensitive data exposure
+- **🔒 Secure .env**: Add to .gitignore, never commit tokens
+- **🤖 Dedicated bots**: Use separate Telegram bots per project
+- **🔄 Token rotation**: Regularly rotate API tokens
+- **📊 Output review**: Check reports for sensitive data before sharing
 
-## 📚 Example Workflow
+## 📚 Example Session
 
 ```bash
 # 1. Setup
+cd /home/l0n3/bbrecon
 cp env.example .env
-nano .env  # Configure Telegram
+nano .env  # Configure Telegram tokens
 
 # 2. Run reconnaissance
-./bbrecon.sh -t example.com
+bbrecon -t example.com
 
 # 3. Review results
 cd /home/l0n3/bugbounty/example.com
 cat resumen.txt
+cat js_secrets.txt
 
-# 4. Manual analysis
-less alive_jsfile.txt
-grep -i "api" hidden_endpoints.txt
+# 4. Open HTML report
+firefox bbrecon_report.html
 ```
+
+## 🚀 Recent Updates
+
+- **v2.0**: Complete rewrite with stealth focus
+- **Secret Detection**: Precise patterns for major API providers
+- **Dark Mode Reports**: Beautiful HTML reports
+- **Rate Limiting**: Conservative approach for bug bounty
+- **File Organization**: Cleaner output structure
+- **Telegram Integration**: Real-time progress updates
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
+3. Test thoroughly with rate limiting
+4. Ensure stealth compatibility
 5. Submit a pull request
 
 ## 📜 License
 
-This project is licensed under the GPL-3.0 License - see the LICENSE file for details.
+This project is licensed under the GPL-3.0 License.
 
 ## ⚠️ Disclaimer
 
-This tool is for educational and authorized security testing purposes only. Users are responsible for complying with applicable laws and obtaining proper authorization before testing any systems they do not own.
+This tool is for authorized security testing purposes only. Users are responsible for:
+- Obtaining proper authorization before testing
+- Complying with applicable laws and regulations
+- Using rate limiting to avoid service disruption
+- Following responsible disclosure practices
 
 ## 🙋‍♂️ Support
 
-For issues, questions, or feature requests:
+For issues and questions:
 1. Check the troubleshooting section
-2. Review existing issues
-3. Create a new issue with detailed information
+2. Review tool installation
+3. Test Telegram configuration
+4. Create an issue with logs
 
 ---
 
-**Happy Bug Hunting! 🐛💰**
+**Happy Bug Hunting! 🎯🔍**
